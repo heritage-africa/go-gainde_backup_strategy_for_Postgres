@@ -1,0 +1,76 @@
+name: Neon Postgres Backup to Cloudflare R2
+
+on:
+  schedule:
+    - cron: '* 2 * * *'  # Garde ton schedule original
+  workflow_dispatch:  # Pour lancer manuellement
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Installer les outils
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y curl ca-certificates gnupg lsb-release gzip unzip
+          
+          sudo install -d /usr/share/keyrings
+          
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg arch=$(dpkg --print-architecture)] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17
+          
+          # Installation AWS CLI v2 avec --update
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --update
+          
+          # Vérif versions
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          aws --version
+
+      - name: Test de connexion à Cloudflare R2 (optionnel si endpoint vide)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+        run: |
+          if [ -n "$R2_ENDPOINT_URL" ]; then
+            echo "Test de connexion à R2..."
+            aws s3 ls --endpoint-url $R2_ENDPOINT_URL || echo "Test échoué (vérifie creds/endpoint)"
+          else
+            echo "R2_ENDPOINT_URL non défini – skip du test connexion"
+          fi
+
+      - name: Effectuer le backup et upload
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          DATABASE_URL_COMPLET: ${{ secrets.NEON_DATABASE_URL_COMPLET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+        run: |
+          # Vérif obligatoire endpoint pour upload
+          if [ -z "$R2_ENDPOINT_URL" ]; then
+            echo "Erreur : R2_ENDPOINT_URL secret manquant !"
+            exit 1
+          fi
+          
+          DATE=$(date +%Y%m%d-%H%M)
+          
+          # Backup + compression + upload direct (identique à ton pipe original)
+          /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL_COMPLET" -Fc --verbose \
+            | gzip \
+            | aws s3 cp - s3://$R2_BUCKET/neon-db-$DATE.dump.gz \
+                --endpoint-url $R2_ENDPOINT_URL
+          
+          echo "Backup OK → s3://$R2_BUCKET/neon-db-$DATE.dump.gz sur Cloudflare R2"
