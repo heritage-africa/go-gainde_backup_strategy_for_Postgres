@@ -7,7 +7,7 @@ Ce  **workflow GitHub Actions** permet de sauvegarder une base **PostgreSQL héb
 ## Objectif
 
 - Sauvegarde automatisée et sécurisée
-- Compatible avec **S3 non-AWS**
+- Compatible avec **S3**
 
 ---
 
