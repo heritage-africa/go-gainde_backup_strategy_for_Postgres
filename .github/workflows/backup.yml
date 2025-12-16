@@ -1,8 +1,8 @@
 name: Neon Postgres Backup to Cloudflare R2
 
 on:
-  schedule:
-    - cron: '* 2 * * *'  # Garde ton schedule original
+  #schedule:
+   # - cron: '* 2 * * *'  # Garde ton schedule original
   workflow_dispatch:  # Pour lancer manuellement
 
 jobs:
