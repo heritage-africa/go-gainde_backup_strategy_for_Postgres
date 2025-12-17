@@ -1,0 +1,63 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: neon-postgres-backup-task
+spec:
+  steps:
+    - name: backup-and-upload
+      image: docker.io/library/ubuntu:22.04  # Changé en 22.04 (plus stable, moins de problèmes de pull Docker Hub)
+      imagePullPolicy: Always  # Force retry pull à chaque run (aide contre transients EOF)
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: secret-access-key
+        - name: AWS_DEFAULT_REGION
+          value: auto
+        - name: DATABASE_URL_COMPLET
+          valueFrom:
+            secretKeyRef:
+              name: neon-db-secret
+              key: database-url-complet
+        - name: R2_BUCKET
+          value: $(params.R2_BUCKET)
+        - name: R2_ENDPOINT_URL
+          value: $(params.R2_ENDPOINT_URL)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+
+        apt-get update -qq
+        apt-get install -y curl ca-certificates gnupg lsb-release gzip unzip
+
+        # Install PostgreSQL 17 client (jammy supporté par PGDG)
+        install -d /usr/share/keyrings
+        curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+        echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt jammy-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+        apt-get update -qq
+        apt-get install -y postgresql-client-17
+
+        # Install AWS CLI v2
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        ./aws/install --update
+
+        # Backup & upload
+        DATE=$(date +%Y%m%d-%H%M)
+        /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL_COMPLET" -Fc --verbose \
+          | gzip \
+          | aws s3 cp - s3://$R2_BUCKET/neon-db-$DATE.dump.gz \
+              --endpoint-url $R2_ENDPOINT_URL
+
+        echo "Backup terminé : neon-db-$DATE.dump.gz"
+  params:
+    - name: R2_BUCKET
+      type: string
+    - name: R2_ENDPOINT_URL
+      type: string

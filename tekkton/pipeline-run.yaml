@@ -1,0 +1,14 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: neon-backup-run-1
+spec:
+  pipelineRef:
+    name: neon-postgres-backup-pipeline
+  params:
+    - name: DATABASE_URL_COMPLET
+      value: "postgresql://neondb_owner:npg_xcHQD6ojNW5I@ep-empty-union-aftzrls8-pooler.c-2.us-west-2.aws.neon.tech/neondb"
+    - name: R2_BUCKET
+      value: "pddump"
+    - name: R2_ENDPOINT_URL
+      value: "https://14f079659dc8e97cac47163e5282743a.r2.cloudflarestorage.com"

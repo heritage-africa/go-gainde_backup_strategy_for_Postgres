@@ -1,0 +1,17 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: neon-postgres-backup-pipeline
+spec:
+  params:
+    - name: R2_BUCKET
+    - name: R2_ENDPOINT_URL
+  tasks:
+    - name: backup
+      taskRef:
+        name: neon-postgres-backup-task
+      params:
+        - name: R2_BUCKET
+          value: $(params.R2_BUCKET)
+        - name: R2_ENDPOINT_URL
+          value: $(params.R2_ENDPOINT_URL)
